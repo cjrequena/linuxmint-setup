@@ -1,0 +1,88 @@
+---
+- name: Linux Mint setup
+  hosts: localhost
+  become: true
+  vars:
+    upgrade_packages: false
+
+    # CLI packages available via APT
+    apt_packages:
+      - ansible
+      - curl
+      - git
+      - jq
+      - openssl
+      - python3
+      - rbenv
+      - ruby-build
+      - tree
+      - wget
+      - zsh
+      - zsh-syntax-highlighting
+      - docker.io
+      - virtualbox
+      - openssh-client
+
+    # GUI apps via Flatpak
+    flatpak_packages:
+      - com.google.Chrome
+      - com.spotify.Client
+      - com.calibre_ebook.calibre
+      - com.slack.Slack
+      - com.jetbrains.IntelliJ-IDEA-Community
+      - com.getpostman.Postman
+      - com.visualstudio.code
+
+  pre_tasks:
+    - name: Update APT cache
+      apt:
+        update_cache: yes
+      tags: always
+
+    - name: Upgrade all packages
+      apt:
+        upgrade: dist
+      when: upgrade_packages
+
+    - name: Ensure Flatpak is installed
+      apt:
+        name: flatpak
+        state: present
+
+    - name: Add Flathub remote if not present
+      flatpak_remote:
+        name: flathub
+        state: present
+        flatpakrepo_url: https://flathub.org/repo/flathub.flatpakrepo
+
+  tasks:
+    - name: Install APT packages
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop: "{{ apt_packages }}"
+
+    - name: Install nvm (Node Version Manager)
+      shell: |
+        export NVM_DIR="$HOME/.nvm"
+        if [ ! -d "$NVM_DIR" ]; then
+          curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash        
+        fi
+      args:
+        executable: /bin/bash
+      become: false
+
+
+    - name: Install pyenv
+      git:
+        repo: 'https://github.com/pyenv/pyenv.git'
+        dest: "$HOME/.pyenv"
+        version: master
+      become: false
+
+    - name: Install Flatpak packages from Flathub
+      flatpak:
+        name: "{{ item }}"
+        state: present
+        remote: flathub
+      loop: "{{ flatpak_packages }}"
