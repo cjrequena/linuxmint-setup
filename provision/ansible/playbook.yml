@@ -40,7 +40,6 @@
       - wget
       - zsh
       - zsh-syntax-highlighting
-      - docker.io
       - virtualbox
       - openssh-client
       - sublime-text
@@ -246,10 +245,6 @@
 # Play 3: Install Docker Desktop on Linux Mint
 # ============================================================
 
-# ============================================================
-# Play: Install Docker Desktop on Linux Mint
-# ============================================================
-
 - name: Install Docker Desktop on Linux Mint
   hosts: localhost
   become: true
@@ -311,11 +306,11 @@
         deb: "{{ user_home }}/{{ docker_desktop_deb }}"
         state: present
 
-    # -------------------------------
-    # Enable and start Docker Desktop user service
-    # -------------------------------
-    - name: Enable Docker Desktop user service
-      become_user: "{{ not_root_user }}"
-      shell: systemctl --user enable docker-desktop
-      args:
-        creates: "{{ user_home }}/.config/systemd/user/default.target.wants/docker-desktop.service"
+#    # -------------------------------
+#    # Enable and start Docker Desktop user service
+#    # -------------------------------
+#    - name: Enable Docker Desktop user service
+#      become_user: "{{ not_root_user }}"
+#      shell: systemctl --user enable docker-desktop
+#      args:
+#        creates: "{{ user_home }}/.config/systemd/user/default.target.wants/docker-desktop.service"
