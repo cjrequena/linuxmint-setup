@@ -37,16 +37,7 @@ else
   exit 1
 fi
 
-## ========== 3. Install Homebrew ==========
-#section "Installing Homebrew"
-#if sh ./provision/shell/install_brew.sh; then
-#  success "Homebrew installation complete."
-#else
-#  error "Homebrew installation failed."
-#  exit 1
-#fi
-
-# ========== 4. Install Ansible ==========
+# ========== 3. Install Ansible ==========
 section "Installing Ansible"
 if sh ./provision/shell/install_ansible.sh; then
   success "Ansible installation complete."
@@ -55,7 +46,7 @@ else
   exit 1
 fi
 
-# ========== 5. Execute Ansible Playbook ==========
+# ========== 4. Execute Ansible Playbook ==========
 section "Running Ansible playbook"
 if ansible-playbook provision/ansible/playbook.yml; then
   success "Ansible playbook executed successfully."
@@ -64,7 +55,7 @@ else
   exit 1
 fi
 
-## ========== 6. Configure Shell Profiles ==========
+## ========== 5. Configure Shell Profiles ==========
 #section "Configuring shell profiles"
 #cp -v .bash_profile ~/
 #cp -v .zprofile ~/
@@ -75,6 +66,6 @@ fi
 #fi
 #
 ## ========== Completion ==========
-#section "Provisioning Complete 🎉"
-#success "Your Linux Mint environment has been configured successfully!"
-#info "Next step: restart your terminal to finalize environment variables."
+section "Provisioning Complete 🎉"
+success "Your Linux Mint environment has been configured successfully!"
+info "Next step: restart your terminal to finalize environment variables."

@@ -1,11 +1,32 @@
----
-- name: Linux Mint setup
+# ============================================================
+# Linux Mint Setup Playbook
+# ------------------------------------------------------------
+# Purpose:
+#   - Install essential system packages via APT
+#   - Install GUI applications via Flatpak
+#   - Configure Docker for non-root usage
+#   - Install per-user developer tools: pyenv, nvm
+# Notes:
+#   - System tasks run as root (become: true)
+#   - Per-user tools run as a specific normal user to ensure correct permissions
+# ============================================================
+
+# ============================================================
+# Play 1: System setup (APT packages, Flatpak, Docker)
+# ------------------------------------------------------------
+# Runs as root to install system-wide software.
+# ============================================================
+
+- name: Linux Mint system setup
   hosts: localhost
+  # Root privileges are required for system-level tasks
   become: true
+
   vars:
+    # Set to true to upgrade all packages automatically
     upgrade_packages: false
 
-    # CLI packages available via APT
+    # CLI packages to install via APT
     apt_packages:
       - ansible
       - curl
@@ -22,8 +43,9 @@
       - docker.io
       - virtualbox
       - openssh-client
+      - sublime-text
 
-    # GUI apps via Flatpak
+    # GUI apps to install via Flatpak
     flatpak_packages:
       - com.google.Chrome
       - com.spotify.Client
@@ -33,56 +55,267 @@
       - com.getpostman.Postman
       - com.visualstudio.code
 
+  # -------------------------------
+  # Pre-tasks
+  # -------------------------------
   pre_tasks:
+    # Update the APT package cache
     - name: Update APT cache
       apt:
         update_cache: yes
       tags: always
 
+    # Optionally upgrade all packages
     - name: Upgrade all packages
       apt:
         upgrade: dist
       when: upgrade_packages
 
+    # Ensure Flatpak is installed for GUI apps
     - name: Ensure Flatpak is installed
       apt:
         name: flatpak
         state: present
 
+    # Add the Flathub repository if it does not exist
     - name: Add Flathub remote if not present
       flatpak_remote:
         name: flathub
         state: present
         flatpakrepo_url: https://flathub.org/repo/flathub.flatpakrepo
 
+    # Configure Sublime Text APT repository
+    - name: Add Sublime Text GPG key
+      apt_key:
+        url: https://download.sublimetext.com/sublimehq-pub.gpg
+        state: present
+
+    - name: Add Sublime Text APT repository
+      apt_repository:
+        repo: "deb https://download.sublimetext.com/ apt/stable/"
+        state: present
+
+  # -------------------------------
+  # Main tasks
+  # -------------------------------
   tasks:
+    # Install all specified APT packages
     - name: Install APT packages
       apt:
         name: "{{ item }}"
         state: present
       loop: "{{ apt_packages }}"
 
-    - name: Install nvm (Node Version Manager)
-      shell: |
-        export NVM_DIR="$HOME/.nvm"
-        if [ ! -d "$NVM_DIR" ]; then
-          curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash        
-        fi
-      args:
-        executable: /bin/bash
-      become: false
+    # Ensure the docker group exists for non-root Docker usage
+    - name: Ensure docker group exists
+      group:
+        name: docker
+        state: present
 
+    # Add the current user to the docker group (non-root Docker usage)
+    - name: Add current user to docker group
+      user:
+        name: "{{ ansible_env.USER }}"
+        groups: docker
+        append: yes
 
-    - name: Install pyenv
-      git:
-        repo: 'https://github.com/pyenv/pyenv.git'
-        dest: "$HOME/.pyenv"
-        version: master
-      become: false
-
+    # Install GUI apps via Flatpak from Flathub
     - name: Install Flatpak packages from Flathub
       flatpak:
         name: "{{ item }}"
         state: present
         remote: flathub
       loop: "{{ flatpak_packages }}"
+
+# ============================================================
+# Play 2: Per-user developer tools (pyenv, nvm)
+# ------------------------------------------------------------
+# Runs as the specified normal user to ensure correct $HOME and permissions
+# ============================================================
+
+- name: Install per-user developer tools
+  hosts: localhost
+  # Allows switching user context
+  become: true
+  become_user: "{{ not_root_user }}"  # Run tasks as the normal user
+  vars:
+    # Replace with your actual username
+    not_root_user: cjrequena
+    # Explicit home directory
+    user_home: "/home/{{ not_root_user }}"
+    # Flag to enable or disable adding initialization lines to shells
+    add_shell_initializations: false
+
+  tasks:
+    # Display the current home directory for clarity
+    - name: Print current HOME
+      debug:
+        msg: "Current user's HOME directory is {{ user_home }}"
+
+    # -------------------------------
+    # pyenv installation
+    # -------------------------------
+    - name: Install pyenv
+      git:
+        repo: 'https://github.com/pyenv/pyenv.git'
+        dest: "{{ user_home }}/.pyenv"
+        version: master
+
+    # Optional: Add pyenv initialization to shell
+    - name: Add pyenv initialization to bash and zsh
+      lineinfile:
+        path: "{{ item }}"
+        line: 'export PYENV_ROOT="$HOME/.pyenv" && export PATH="$PYENV_ROOT/bin:$PATH" && eval "$(pyenv init --path)"'
+        state: present
+      loop:
+        - "{{ user_home }}/.bashrc"
+        - "{{ user_home }}/.zshrc"
+      when: add_shell_initializations
+
+    # -------------------------------
+    # nvm installation
+    # -------------------------------
+    - name: Install nvm
+      git:
+        repo: 'https://github.com/nvm-sh/nvm.git'
+        dest: "{{ user_home }}/.nvm"
+        version: v0.40.3
+        update: yes
+        recursive: no
+
+    # Optional: Add nvm initialization to shell
+    - name: Add nvm initialization to bash and zsh
+      lineinfile:
+        path: "{{ item }}"
+        line: 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"'
+        state: present
+      loop:
+        - "{{ user_home }}/.bashrc"
+        - "{{ user_home }}/.zshrc"
+      when: add_shell_initializations
+
+    # -------------------------------
+    # jenv installation
+    # -------------------------------
+    - name: Install jenv
+      git:
+        repo: 'https://github.com/jenv/jenv.git'
+        dest: "{{ user_home }}/.jenv"
+        version: 0.5.9
+
+    # Optional: Add jenv initialization to bash and zsh
+    - name: Add jenv initialization to bash and zsh
+      lineinfile:
+        path: "{{ item }}"
+        line: 'export PATH="$HOME/.jenv/bin:$PATH" && eval "$(jenv init -)"'
+        state: present
+      loop:
+        - "{{ user_home }}/.bashrc"
+        - "{{ user_home }}/.zshrc"
+      when: add_shell_initializations
+
+    # -------------------------------
+    # SDKMAN installation
+    # -------------------------------
+    - name: Install SDKMAN (Software Development Kit Manager)
+      shell: |
+        export SDKMAN_DIR="{{ user_home }}/.sdkman"
+        if [ ! -d "$SDKMAN_DIR" ]; then
+          curl -s "https://get.sdkman.io" | bash
+        else
+          echo "SDKMAN already installed at $SDKMAN_DIR"
+        fi
+      args:
+        executable: /bin/bash
+      environment:
+        HOME: "{{ user_home }}"   # Ensure correct home
+        SDKMAN_DIR: "{{ user_home }}/.sdkman"
+
+    # Optional: Add SDKMAN initialization to shell
+    - name: Add SDKMAN initialization to bash and zsh
+      lineinfile:
+        path: "{{ item }}"
+        line: 'export SDKMAN_DIR="$HOME/.sdkman" && [[ -s "$SDKMAN_DIR/bin/sdkman-init.sh" ]] && source "$SDKMAN_DIR/bin/sdkman-init.sh"'
+        state: present
+      loop:
+        - "{{ user_home }}/.bashrc"
+        - "{{ user_home }}/.zshrc"
+      when: add_shell_initializations
+
+# ============================================================
+# Play 3: Install Docker Desktop on Linux Mint
+# ============================================================
+
+# ============================================================
+# Play: Install Docker Desktop on Linux Mint
+# ============================================================
+
+- name: Install Docker Desktop on Linux Mint
+  hosts: localhost
+  become: true
+  vars:
+    not_root_user: cjrequena  # Replace with your username
+    user_home: "/home/{{ not_root_user }}"
+    docker_desktop_version: "4.26.1"  # Update to latest version
+    docker_desktop_deb: "docker-desktop-{{ docker_desktop_version }}-amd64.deb"
+    docker_desktop_url: "https://desktop.docker.com/linux/main/amd64/{{ docker_desktop_deb }}"
+
+  tasks:
+    # -------------------------------
+    # Install system prerequisites
+    # -------------------------------
+    - name: Install prerequisites
+      apt:
+        name:
+          - curl
+          - ca-certificates
+          - apt-transport-https
+          - gnupg
+          - lsb-release
+          - software-properties-common
+        state: present
+        update_cache: yes
+
+    # -------------------------------
+    # Install Docker Engine / CLI using official convenience script
+    # -------------------------------
+    - name: Install Docker Engine and CLI
+      shell: curl -fsSL https://get.docker.com | sh
+      args:
+        executable: /bin/bash
+
+    # -------------------------------
+    # Add current user to docker group
+    # -------------------------------
+    - name: Add user to docker group
+      user:
+        name: "{{ not_root_user }}"
+        groups: docker
+        append: yes
+
+    # -------------------------------
+    # Download Docker Desktop .deb
+    # -------------------------------
+    - name: Download Docker Desktop .deb
+      get_url:
+        url: "{{ docker_desktop_url }}"
+        dest: "{{ user_home }}/{{ docker_desktop_deb }}"
+        mode: '0644'
+      become_user: "{{ not_root_user }}"
+
+    # -------------------------------
+    # Install Docker Desktop .deb
+    # -------------------------------
+    - name: Install Docker Desktop .deb
+      apt:
+        deb: "{{ user_home }}/{{ docker_desktop_deb }}"
+        state: present
+
+    # -------------------------------
+    # Enable and start Docker Desktop user service
+    # -------------------------------
+    - name: Enable Docker Desktop user service
+      become_user: "{{ not_root_user }}"
+      shell: systemctl --user enable docker-desktop
+      args:
+        creates: "{{ user_home }}/.config/systemd/user/default.target.wants/docker-desktop.service"
